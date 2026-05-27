@@ -1,7 +1,7 @@
 ---
 name: xiaohongshu-rewriter
 description: "Use when the user wants to rewrite text, articles, or video transcripts into Xiaohongshu (小红书 / RED) style posts. Transforms any input into platform-optimized posts with emoji formatting, hook titles, bullet-point structure, hashtags, and compliance checks. Also supports video-to-post pipeline via youtube-content skill integration."
-version: 1.0.0
+version: 2.0.0
 author: Dynamic-braking9
 license: MIT
 metadata:
@@ -37,6 +37,22 @@ metadata:
 - 检查已有草稿是否符合小红书风格并优化
 
 Don't use for: 微信公众号文章（格式不同）、微博（字数限制）、知乎回答（深度要求），这些平台各有独立规范。
+
+## 前置步骤：研究对标（改写前必做）
+
+改写不是直接翻译，要先理解平台已有内容。在开始改写前：
+
+1. **确认目标受众** — 让用户描述：这篇帖子面向谁？（研究生/职场新人/宝妈/学生）用户想达到什么效果？（涨粉/引流/科普/带货？）
+
+2. **搜索对标内容** — 在小红书搜索同主题热门帖子，分析：
+   - 爆款标题用了什么公式？（数字冲击/悬念/身份标签？）
+   - 评论区高频词是什么？（用户的真实痛点）
+   - emoji 风格是活泼还是专业？
+   - 正文结构是清单式还是故事式？
+
+3. **提取可复用元素** — 从对标帖子中提取 3-5 个可复用的表达方式或结构模式，融入到输出中。
+
+⚠️ 如果用户没有提供对标信息，至少要让用户确认目标受众，不要凭空猜测。
 
 ## 核心改写原则
 
@@ -114,6 +130,8 @@ Don't use for: 微信公众号文章（格式不同）、微博（字数限制�
 
 ### 5. 排版规则
 
+- **标题不超过 20 字** — 小红书信息流只展示前 20 字左右，超长标题等于浪费曝光。如果关键词较多，放在正文第一句而不是标题里。
+- **正文不超过 1000 字** — 平台硬性限制（含标点和 emoji）。输出后必须调用 `compliance_check()` 验证超限。
 - **一句话一分行**，拒绝段落超过 3 行
 - 要点之间用 **空行** 分隔
 - 数字列表用 `1️⃣ 2️⃣ 3️⃣` 替代 `1. 2. 3.`
@@ -163,6 +181,22 @@ Don't use for: 微信公众号文章（格式不同）、微博（字数限制�
 - **视觉化**：用 emoji 替代概念名词（📊 = 数据，🧠 = 模型，⚡ = 加速）
 - **场景化**：加一句"我在实验室试了/我写论文时用了"
 
+## 去 AI 味检查清单
+
+改写完成后必须检查是否存在 AI 生成痕迹。AI 生成内容常见问题：
+
+| 问题类型 | 典型表达 | 应改为 |
+|----------|----------|--------|
+| 连接词僵硬 | 首先...其次...最后... / 综上所述 / 总而言之 | 直接说观点，不铺垫 / 最后 → 反正就是 / 总的来说不用写 |
+| 翻译腔 | 研究表明... / 值得注意的是... / 在某种程度上 | 我发现... / 重点是... / 算是...吧 |
+| 过度结构化 | 第一...第二...第三... / 一方面...另一方面 | 用 emoji 编号代替，或不要编号直接写 |
+| 空洞总结 | 通过以上分析我们可以得出结论 | 删掉。直接说结论。 |
+| 礼貌客套 | 希望对大家有所帮助 / 欢迎批评指正 | 改成口语：试试就知道！/ 评论区聊聊～ |
+| 被动语态 | 被广泛认为... / 通常被视为... | 大家都说... / 一般会认为... |
+| 无意义修饰 | 非常、十分、极其、显著地 | 小红书可以夸张但要有具体理由，不是空洞副词堆砌 |
+
+检查后逐条替换，确保改后的文字读起来像真人说的，不像 AI 生成的。
+
 ## 合规检查清单
 
 改写完成后必须检查：
@@ -178,30 +212,69 @@ Don't use for: 微信公众号文章（格式不同）、微博（字数限制�
 
 ## 多帖生成
 
-同一主题可生成多个角度，覆盖不同流量池：
+同一主题可生成多个角度，覆盖不同流量池。
 
 ```python
-from templates.xhs_rewriter import XHSRewriter
+from templates.xhs_rewriter import XHSRewriter, compliance_check_v2, detect_ai_flavor, validate_title
 
 rewriter = XHSRewriter(source_text="...关于深度学习的科普文章...")
 
 # 生成 3 个角度
 posts = rewriter.multi_angle(n=3)
-# 1. "入门干货" → 适合搜索流量
-# 2. "踩坑经验" → 适合推荐流量
-# 3. "工具推荐" → 适合时效流量
+# 1. "干货" → 适合搜索流量
+# 2. "踩坑" → 适合推荐流量  
+# 3. "推荐" → 适合时效流量
+
+for post in posts:
+    # 标题字数校验
+    ok, msg = validate_title(post.title)
+    print(f"标题: {post.title}")
+    print(f"校验: {msg}")
+    
+    # 合规检查（上下文感知，区分违规和警告）
+    cr = compliance_check_v2(post.render())
+    if cr.violations:
+        print(f"❌ 违规: {cr.violations}")
+    if cr.warnings:
+        print(f"⚠️ 提醒: {cr.warnings}")
+    
+    # 去 AI 味检测
+    ai = detect_ai_flavor(post.render())
+    if ai:
+        print(f"🤖 AI味: {ai}")
 ```
 
 ## A/B 测试标题
 
-自动生成 3 个备选标题，让用户选择：
+自动生成多个备选标题，附带字数校验：
 
 ```python
 rewriter = XHSRewriter(source_text=content)
-titles = rewriter.generate_titles(n=3)
-# → ["3天搞定Python基础，同事以为我偷偷报班了！",
-#    "后悔没早学Python，研究生才知道的偷懒神器",
-#    "Python零基础入门，看这一篇就够了"]
+titles = rewriter.generate_titles(n=5)
+for t in titles:
+    ok, msg = validate_title(t)
+    print(f"{'✅' if ok else '❌'} {t}")
+    # ❌ Python数据可视化入门指南，看这一篇就够了
+    # ✅ 3步搞定Python可视化！  
+```
+
+## 脚本工具说明
+
+`templates/xhs_rewriter.py` v2.0 提供以下工具函数，供批量处理或脚本化场景使用：
+
+| 函数 | 作用 |
+|------|------|
+| `XHSRewriter(source).rewrite(angle)` | 核心改写（4 种角度） |
+| `XHSRewriter(source).multi_angle(n)` | 多角度批量生成 |
+| `XHSRewriter(source).generate_titles(n)` | 备选标题生成 |
+| `validate_title(title)` | 标题字数校验（≤20 字） |
+| `compliance_check_v2(text)` | 合规检查（区分违规/警告） |
+| `detect_ai_flavor(text)` | AI 味检测 |
+| `extract_keywords(text)` | jieba 分词提取关键词 |
+| `detect_domain(text)` | 领域检测（6 类） |
+| `TranscriptToXHS.process(transcript)` | 视频字幕预处理 → 帖子 |
+
+> ⚠️ 脚本的关键词提取和模板生成是**辅助性的**（用于快速草稿和批量场景），核心改写质量靠 LLM。不要在 LLM 驱动的会话中依赖脚本做语义理解——SKILL.md 中的改写原则和模板才是主角。
 ```
 
 ## Common Pitfalls
@@ -231,3 +304,9 @@ titles = rewriter.generate_titles(n=3)
 - [ ] 文末有互动引导？
 - [ ] 通过合规检查？
 - [ ] 核心信息保留（没有为了风格牺牲内容）？
+
+## References
+
+- `references/examples.md` — 4 个完整改写示例
+- `references/known-issues.md` — 已知局限和修复历史
+- `references/competitive-analysis.md` — 市场上其他小红书 skill 的对比分析
